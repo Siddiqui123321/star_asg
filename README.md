@@ -39,6 +39,8 @@ This repository contains a Django backend for a notification system that support
 
 ## Environment variables
 
+Copy `.env.example` to the **project root** (`star_asg/.env`). The backend loads this file automatically.
+
 Use `.env.example` to configure:
 - `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ADMIN_API_TOKEN`
 - `WHATSAPP_ACCESS_TOKEN`, `PHONE_NUMBER_ID`, `TEST_WHATSAPP_RECIPIENT`
@@ -105,6 +107,7 @@ Use `.env.example` to configure:
 3. Subscribe the browser for Web Push and fire login/logout triggers.
 
 ## Local testing notes
+- Put backend credentials in `star_asg/.env` (repo root), not only inside `NMS/`.
 - If PowerShell does not recognize `node` or `npm`, close the terminal and reopen it after Node.js installation.
 - If you installed Node.js but the command still fails, run `refreshenv` in PowerShell (if available), or launch a new terminal.
 - The frontend uses `VITE_API_URL` and `VITE_ONESIGNAL_APP_ID` from `frontend/.env`.
@@ -114,3 +117,20 @@ Use `.env.example` to configure:
 2. The browser will register with OneSignal and return a subscription ID.
 3. The app sends that subscription ID to the backend via `POST /api/subscribe/`.
 4. When a trigger fires, the backend uses saved OneSignal subscriber IDs to send browser notifications.
+
+## Troubleshooting
+
+### Trigger returns 200 but no email/push arrives
+1. Confirm `.env` is in the project root (`star_asg/.env`) and restart the Django server after changes.
+2. Check the status message under **Notification System** after firing a trigger. It now shows per-channel results such as `email: sent` or `web_push: failed (...)`.
+3. In the admin panel, make sure the Email and Web Push templates are **enabled** for that trigger.
+
+### Postmark email fails
+- Verify `POSTMARK_FROM_EMAIL` as a **Sender Signature** in Postmark.
+- On a free Developer Server, Postmark only delivers to verified recipient addresses. Add `TEST_EMAIL_RECIPIENT` as an approved recipient or verify that inbox in Postmark.
+
+### OneSignal push fails
+- Use the **REST API Key** from OneSignal Dashboard → Settings → Keys & IDs (starts with `os_v2_app_`).
+- Allow `http://localhost:5173` as a site origin in your OneSignal web app settings.
+- Click **Subscribe to Web Push** again after backend fixes so a fresh subscription ID is saved.
+- Disable WhatsApp templates until WhatsApp sandbox credentials are configured, or ignore WhatsApp failures in the trigger summary.

@@ -50,29 +50,86 @@ def send_postmark_email(to_email: str, subject: str, html_body: str, text_body: 
         'X-Postmark-Server-Token': settings.POSTMARKAPP_TOKEN,
     }
     response = requests.post(url, json=payload, headers=headers, timeout=15)
-    response.raise_for_status()
+    if not response.ok:
+        detail = response.text
+        try:
+            detail = response.json()
+        except Exception:
+            pass
+        raise ValueError(f'Postmark error ({response.status_code}): {detail}')
     return response.json()
 
 
-def send_web_push(external_ids: list[str], title: str, body: str, url: str = None) -> dict:
-    if not settings.ONESIGNAL_APP_ID or not settings.ONESIGNAL_REST_API_KEY:
+def send_web_push(player_ids: list[str], title: str, body: str, url: str = None) -> dict:
+    if not settings.ONESIGNAL_APP_ID:
         raise ValueError('OneSignal credentials are not configured')
-    endpoint = 'https://onesignal.com/api/v1/notifications'
-    payload = {
+    if not player_ids:
+        raise ValueError('No OneSignal player IDs provided')
+
+    base_payload = {
         'app_id': settings.ONESIGNAL_APP_ID,
-        'include_external_user_ids': external_ids,
         'headings': {'en': title},
         'contents': {'en': body},
     }
     if url:
-        payload['url'] = url
-    headers = {
-        'Authorization': f'Basic {settings.ONESIGNAL_REST_API_KEY}',
-        'Content-Type': 'application/json; charset=utf-8',
-    }
-    response = requests.post(endpoint, json=payload, headers=headers, timeout=15)
-    response.raise_for_status()
-    return response.json()
+        base_payload['url'] = url
+
+    attempts = [
+        {
+            'endpoint': 'https://api.onesignal.com/notifications',
+            'payload': {
+                **base_payload,
+                'target_channel': 'push',
+                'include_subscription_ids': player_ids,
+            },
+            'headers': {
+                'Authorization': f'Key {settings.ONESIGNAL_REST_API_KEY}',
+                'Content-Type': 'application/json; charset=utf-8',
+            },
+        },
+        {
+            'endpoint': 'https://onesignal.com/api/v1/notifications',
+            'payload': {
+                **base_payload,
+                'include_player_ids': player_ids,
+            },
+            'headers': {
+                'Authorization': f'Basic {settings.ONESIGNAL_REST_API_KEY}',
+                'Content-Type': 'application/json; charset=utf-8',
+            },
+        },
+        {
+            'endpoint': 'https://onesignal.com/api/v1/notifications',
+            'payload': {
+                **base_payload,
+                'include_player_ids': player_ids,
+            },
+            'headers': {
+                'Content-Type': 'application/json; charset=utf-8',
+            },
+        },
+    ]
+
+    last_error = None
+    for attempt in attempts:
+        if 'Authorization' in attempt['headers'] and not settings.ONESIGNAL_REST_API_KEY:
+            continue
+        response = requests.post(
+            attempt['endpoint'],
+            json=attempt['payload'],
+            headers=attempt['headers'],
+            timeout=15,
+        )
+        if response.ok:
+            return response.json()
+        detail = response.text
+        try:
+            detail = response.json()
+        except Exception:
+            pass
+        last_error = f'OneSignal error ({response.status_code}): {detail}'
+
+    raise ValueError(last_error or 'OneSignal request failed')
 
 
 def build_notification_context(trigger_slug: str, user: dict | None = None) -> dict:

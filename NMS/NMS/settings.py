@@ -16,7 +16,10 @@ from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+ROOT_DIR = BASE_DIR.parent
 
+# Support .env at repo root (star_asg/.env) and NMS/.env for local overrides.
+load_dotenv(ROOT_DIR / '.env')
 load_dotenv(BASE_DIR / '.env')
 
 
@@ -146,9 +149,9 @@ WHATSAPP_ACCESS_TOKEN = os.getenv('WHATSAPP_ACCESS_TOKEN', '')
 PHONE_NUMBER_ID = os.getenv('PHONE_NUMBER_ID', '')
 TEST_WHATSAPP_RECIPIENT = os.getenv('TEST_WHATSAPP_RECIPIENT', '')
 
-POSTMARKAPP_TOKEN = os.getenv('POSTMARKAPP_TOKEN', '')
-POSTMARK_FROM_EMAIL = os.getenv('POSTMARK_FROM_EMAIL', '')
-TEST_EMAIL_RECIPIENT = os.getenv('TEST_EMAIL_RECIPIENT', '')
+POSTMARKAPP_TOKEN = os.getenv('POSTMARKAPP_TOKEN', '').strip()
+POSTMARK_FROM_EMAIL = os.getenv('POSTMARK_FROM_EMAIL', '').strip()
+TEST_EMAIL_RECIPIENT = os.getenv('TEST_EMAIL_RECIPIENT', '').strip()
 
-ONESIGNAL_APP_ID = os.getenv('ONESIGNAL_APP_ID', '')
-ONESIGNAL_REST_API_KEY = os.getenv('ONESIGNAL_REST_API_KEY', '')
+ONESIGNAL_APP_ID = os.getenv('ONESIGNAL_APP_ID', '').strip()
+ONESIGNAL_REST_API_KEY = os.getenv('ONESIGNAL_REST_API_KEY', '').strip()

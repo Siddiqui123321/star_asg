@@ -29,18 +29,31 @@ function App() {
   }, [adminToken])
 
   useEffect(() => {
-    if (window.OneSignal && import.meta.env.VITE_ONESIGNAL_APP_ID) {
+    const appId = import.meta.env.VITE_ONESIGNAL_APP_ID
+    if (!appId) {
+      return
+    }
+    const initOneSignal = () => {
+      if (!window.OneSignal || window.__onesignalInitialized) {
+        return
+      }
       window.OneSignal.push(() => {
-        try {
-          window.OneSignal.init({
-            appId: import.meta.env.VITE_ONESIGNAL_APP_ID,
-            allowLocalhostAsSecureOrigin: true,
-            notifyButton: { enable: false },
-          })
-        } catch (err) {
-          console.log('OneSignal already initialized or error:', err)
+        if (window.__onesignalInitialized) {
+          return
         }
+        window.OneSignal.init({
+          appId,
+          allowLocalhostAsSecureOrigin: true,
+          notifyButton: { enable: false },
+        })
+        window.__onesignalInitialized = true
       })
+    }
+    if (window.OneSignal) {
+      initOneSignal()
+    } else {
+      window.OneSignal = window.OneSignal || []
+      initOneSignal()
     }
   }, [])
 
@@ -133,7 +146,7 @@ function App() {
       body: JSON.stringify(payload),
     })
     const data = await resp.json()
-    setStatusMessage(`Test send: ${templateId} ${data.success ? 'success' : 'failed'}`)
+    setStatusMessage(`Test send: ${data.channel || templateId} ${data.success ? 'success' : `failed (${data.message})`}`)
   }
 
   const handleTriggerFire = async (triggerSlug) => {
@@ -150,7 +163,14 @@ function App() {
       body: JSON.stringify(payload),
     })
     const data = await resp.json()
-    setStatusMessage(`Trigger fired: ${triggerSlug}`)
+    if (!resp.ok) {
+      setStatusMessage(data.detail || `Trigger failed: ${triggerSlug}`)
+      return
+    }
+    const summary = (data.results || [])
+      .map((result) => `${result.channel}: ${result.success ? 'sent' : result.message}`)
+      .join(' | ')
+    setStatusMessage(`Trigger fired: ${triggerSlug}${summary ? ` (${summary})` : ''}`)
   }
 
   const handleSubscribe = () => {
