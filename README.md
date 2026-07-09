@@ -7,6 +7,13 @@ This repository contains a Django backend for a notification system that support
 - Admin APIs for triggers, templates, toggle state, and test sends
 - Trigger firing from the website for login/logout events
 
+### live URLs:
+- Backend (Render): https://star-asg.onrender.com
+- Frontend (Vercel): https://star-asg.vercel.app
+ - admin login creds:
+ - username: admin 
+ - pasword: admin
+
 ## Backend setup
 
 1. Copy `.env.example` to `.env` and fill in sandbox keys.
@@ -117,20 +124,3 @@ Use `.env.example` to configure:
 2. The browser will register with OneSignal and return a subscription ID.
 3. The app sends that subscription ID to the backend via `POST /api/subscribe/`.
 4. When a trigger fires, the backend uses saved OneSignal subscriber IDs to send browser notifications.
-
-## Troubleshooting
-
-### Trigger returns 200 but no email/push arrives
-1. Confirm `.env` is in the project root (`star_asg/.env`) and restart the Django server after changes.
-2. Check the status message under **Notification System** after firing a trigger. It now shows per-channel results such as `email: sent` or `web_push: failed (...)`.
-3. In the admin panel, make sure the Email and Web Push templates are **enabled** for that trigger.
-
-### Postmark email fails
-- Verify `POSTMARK_FROM_EMAIL` as a **Sender Signature** in Postmark.
-- On a free Developer Server, Postmark only delivers to verified recipient addresses. Add `TEST_EMAIL_RECIPIENT` as an approved recipient or verify that inbox in Postmark.
-
-### OneSignal push fails
-- Use the **REST API Key** from OneSignal Dashboard → Settings → Keys & IDs (starts with `os_v2_app_`).
-- Allow `http://localhost:5173` as a site origin in your OneSignal web app settings.
-- Click **Subscribe to Web Push** again after backend fixes so a fresh subscription ID is saved.
-- Disable WhatsApp templates until WhatsApp sandbox credentials are configured, or ignore WhatsApp failures in the trigger summary.
