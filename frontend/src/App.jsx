@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
 
+// Fixed column order for the admin matrix table.
+const CHANNELS = ['whatsapp', 'email', 'web_push']
+
 const CHANNEL_LABELS = {
   whatsapp: 'WhatsApp',
   email: 'Email',
@@ -9,6 +12,10 @@ const CHANNEL_LABELS = {
 }
 
 function App() {
+  // 'site'  -> the public website where users log in / log out (fires triggers)
+  // 'admin' -> the admin panel (create/edit/toggle/test templates ONLY here)
+  const [view, setView] = useState('site')
+
   const [adminToken, setAdminToken] = useState(localStorage.getItem('adminToken') || '')
   const [triggers, setTriggers] = useState([])
   const [loginPayload, setLoginPayload] = useState({ username: 'admin', password: 'password' })
@@ -132,6 +139,29 @@ function App() {
     setStatusMessage('Template saved')
   }
 
+  // Creates a template for a trigger+channel that doesn't have one yet.
+  // Assumes a backend endpoint that accepts trigger id + channel and returns the new template.
+  // If your backend auto-creates empty templates for every channel when a trigger is created,
+  // you can remove this and always rely on handleTemplateChange instead.
+  const handleCreateTemplate = async (triggerId, channel) => {
+    const resp = await fetch(`${API_URL}/admin/templates/create/`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ trigger: triggerId, channel, enabled: false, body: '' }),
+    })
+    const data = await resp.json()
+    if (!resp.ok) {
+      setStatusMessage(data.detail || 'Failed to create template')
+      return
+    }
+    setTriggers((prev) => prev.map((trigger) => (
+      trigger.id === triggerId
+        ? { ...trigger, templates: [...trigger.templates, data] }
+        : trigger
+    )))
+    setStatusMessage(`Template created for ${CHANNEL_LABELS[channel]}`)
+  }
+
   const handleTestSend = async (triggerSlug, templateId) => {
     const payload = {
       trigger_slug: triggerSlug,
@@ -204,140 +234,241 @@ function App() {
 
   return (
     <div className="container">
+      <nav style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
+        <button
+          className={view === 'site' ? '' : 'secondary'}
+          onClick={() => setView('site')}
+        >
+          Website
+        </button>
+        <button
+          className={view === 'admin' ? '' : 'secondary'}
+          onClick={() => setView('admin')}
+        >
+          Admin Panel
+        </button>
+      </nav>
+
       <section>
         <h1>Notification System</h1>
         <p>Backend API: <code>{API_URL}</code></p>
-        <p>{statusMessage}</p>
+        {statusMessage && <p>{statusMessage}</p>}
+      </section>
+
+      {view === 'site' && (
+        <PublicSite
+          subscriberId={subscriberId}
+          isSubscribed={isSubscribed}
+          onTriggerFire={handleTriggerFire}
+          onSubscribe={handleSubscribe}
+        />
+      )}
+
+      {view === 'admin' && (
+        <AdminPanel
+          adminToken={adminToken}
+          triggers={triggers}
+          loginPayload={loginPayload}
+          setLoginPayload={setLoginPayload}
+          newTrigger={newTrigger}
+          setNewTrigger={setNewTrigger}
+          onLogin={handleLogin}
+          onLogout={handleLogout}
+          onCreateTrigger={handleCreateTrigger}
+          onTemplateChange={handleTemplateChange}
+          onCreateTemplate={handleCreateTemplate}
+          onTestSend={handleTestSend}
+        />
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Public website: where users actually log in / log out. This is what FIRES
+// the triggers. No template editing lives here.
+// ---------------------------------------------------------------------------
+function PublicSite({ subscriberId, isSubscribed, onTriggerFire, onSubscribe }) {
+  return (
+    <section>
+      <h2>Welcome</h2>
+      <p>Use the buttons below to simulate a user logging in or out. Each action fires a trigger.</p>
+      <div style={{ display: 'grid', gap: '12px', maxWidth: '420px' }}>
+        <button onClick={() => onTriggerFire('login')}>Log In</button>
+        <button className="secondary" onClick={() => onTriggerFire('logout')}>Log Out</button>
+        <button onClick={onSubscribe}>Subscribe to Web Push</button>
+        {subscriberId && <p><small>Push subscriber ID: {subscriberId}</small></p>}
+        {isSubscribed && <p><small>Browser push subscription is active.</small></p>}
+      </div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Admin panel: login, create triggers, and the matrix table
+// (rows = triggers, columns = WhatsApp / Email / Web Push).
+// All template create/edit/toggle/test actions live ONLY here.
+// ---------------------------------------------------------------------------
+function AdminPanel({
+  adminToken,
+  triggers,
+  loginPayload,
+  setLoginPayload,
+  newTrigger,
+  setNewTrigger,
+  onLogin,
+  onLogout,
+  onCreateTrigger,
+  onTemplateChange,
+  onCreateTemplate,
+  onTestSend,
+}) {
+  if (!adminToken) {
+    return (
+      <section>
+        <h2>Admin Login</h2>
+        <form onSubmit={onLogin} style={{ display: 'grid', gap: '12px', maxWidth: '360px' }}>
+          <div>
+            <label>Username</label>
+            <input
+              value={loginPayload.username}
+              onChange={(e) => setLoginPayload({ ...loginPayload, username: e.target.value })}
+            />
+          </div>
+          <div>
+            <label>Password</label>
+            <input
+              type="password"
+              value={loginPayload.password}
+              onChange={(e) => setLoginPayload({ ...loginPayload, password: e.target.value })}
+            />
+          </div>
+          <button type="submit">Login</button>
+        </form>
+      </section>
+    )
+  }
+
+  return (
+    <>
+      <section>
+        <p>Logged in as admin.</p>
+        <button className="secondary" onClick={onLogout}>Logout</button>
       </section>
 
       <section>
-        <h2>Admin Login</h2>
-        {!adminToken ? (
-          <form onSubmit={handleLogin}>
-            <div>
-              <label>Username</label>
-              <input
-                value={loginPayload.username}
-                onChange={(e) => setLoginPayload({ ...loginPayload, username: e.target.value })}
-              />
-            </div>
-            <div>
-              <label>Password</label>
-              <input
-                type="password"
-                value={loginPayload.password}
-                onChange={(e) => setLoginPayload({ ...loginPayload, password: e.target.value })}
-              />
-            </div>
-            <button type="submit">Login</button>
-          </form>
-        ) : (
+        <h2>Create New Trigger</h2>
+        <form onSubmit={onCreateTrigger} style={{ display: 'grid', gap: '12px', maxWidth: '520px' }}>
           <div>
-            <p>Logged in as admin.</p>
-            <button className="secondary" onClick={handleLogout}>Logout</button>
+            <label>Trigger Slug</label>
+            <input
+              value={newTrigger.slug}
+              onChange={(e) => setNewTrigger({ ...newTrigger, slug: e.target.value })}
+              placeholder="login-success"
+            />
           </div>
-        )}
+          <div>
+            <label>Trigger Name</label>
+            <input
+              value={newTrigger.name}
+              onChange={(e) => setNewTrigger({ ...newTrigger, name: e.target.value })}
+              placeholder="Login"
+            />
+          </div>
+          <div>
+            <label>Description</label>
+            <textarea
+              value={newTrigger.description}
+              rows={2}
+              onChange={(e) => setNewTrigger({ ...newTrigger, description: e.target.value })}
+            />
+          </div>
+          <button type="submit">Create Trigger</button>
+        </form>
       </section>
 
-      {adminToken && (
-        <section>
-          <h2>Create New Trigger</h2>
-          <form onSubmit={handleCreateTrigger} style={{ display: 'grid', gap: '12px', maxWidth: '520px' }}>
-            <div>
-              <label>Trigger Slug</label>
-              <input
-                value={newTrigger.slug}
-                onChange={(e) => setNewTrigger({ ...newTrigger, slug: e.target.value })}
-                placeholder="login-success"
-              />
-            </div>
-            <div>
-              <label>Trigger Name</label>
-              <input
-                value={newTrigger.name}
-                onChange={(e) => setNewTrigger({ ...newTrigger, name: e.target.value })}
-                placeholder="Login"
-              />
-            </div>
-            <div>
-              <label>Description</label>
-              <textarea
-                value={newTrigger.description}
-                rows={2}
-                onChange={(e) => setNewTrigger({ ...newTrigger, description: e.target.value })}
-              />
-            </div>
-            <button type="submit">Create Trigger</button>
-          </form>
-        </section>
-      )}
-
-      {adminToken && (
-        <section>
-          <h2>Admin Panel</h2>
+      <section>
+        <h2>Notification Settings</h2>
+        <p>Rows = triggers. Columns = channels. Manage everything for a trigger from its row.</p>
+        <div style={{ overflowX: 'auto' }}>
           <table>
             <thead>
               <tr>
                 <th>Trigger</th>
-                <th>Channel</th>
-                <th>Enabled</th>
-                <th>Subject / Title</th>
-                <th>Body</th>
-                <th>Actions</th>
+                {CHANNELS.map((channel) => (
+                  <th key={channel}>{CHANNEL_LABELS[channel]}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {triggers.map((trigger) =>
-                trigger.templates.map((template) => (
-                  <tr key={template.id}>
-                    <td>{trigger.name}</td>
-                    <td>{CHANNEL_LABELS[template.channel]}</td>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={template.enabled}
-                        onChange={(e) => handleTemplateChange(trigger.id, template.id, 'enabled', e.target.checked)}
-                      />
-                    </td>
-                    <td>
-                      {(template.channel === 'email' || template.channel === 'web_push') && (
-                        <input
-                          value={template.channel === 'email' ? template.subject : template.title}
-                          onChange={(e) => handleTemplateChange(trigger.id, template.id, template.channel === 'email' ? 'subject' : 'title', e.target.value)}
-                          placeholder={template.channel === 'email' ? 'Subject' : 'Title'}
-                        />
-                      )}
-                    </td>
-                    <td>
-                      <textarea
-                        value={template.body}
-                        rows={3}
-                        onChange={(e) => handleTemplateChange(trigger.id, template.id, 'body', e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <button onClick={() => handleTestSend(trigger.slug, template.id)}>Test</button>
-                    </td>
-                  </tr>
-                ))
-              )}
+              {triggers.map((trigger) => (
+                <tr key={trigger.id}>
+                  <td>
+                    <strong>{trigger.name}</strong>
+                    <br />
+                    <small>{trigger.slug}</small>
+                  </td>
+                  {CHANNELS.map((channel) => {
+                    const template = trigger.templates.find((t) => t.channel === channel)
+                    return (
+                      <td key={channel} style={{ minWidth: '220px', verticalAlign: 'top' }}>
+                        {!template ? (
+                          <button
+                            className="secondary"
+                            onClick={() => onCreateTemplate(trigger.id, channel)}
+                          >
+                            + Create Template
+                          </button>
+                        ) : (
+                          <div style={{ display: 'grid', gap: '6px' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <input
+                                type="checkbox"
+                                checked={template.enabled}
+                                onChange={(e) => onTemplateChange(trigger.id, template.id, 'enabled', e.target.checked)}
+                              />
+                              Enabled
+                            </label>
+
+                            {(channel === 'email' || channel === 'web_push') && (
+                              <input
+                                value={channel === 'email' ? (template.subject || '') : (template.title || '')}
+                                onChange={(e) => onTemplateChange(
+                                  trigger.id,
+                                  template.id,
+                                  channel === 'email' ? 'subject' : 'title',
+                                  e.target.value
+                                )}
+                                placeholder={channel === 'email' ? 'Subject' : 'Title'}
+                              />
+                            )}
+
+                            {channel === 'whatsapp' && (
+                              <div style={{ height: '38px' }} /> // spacer to match subject/title input height
+                            )}
+
+                            <textarea
+                              value={template.body || ''}
+                              rows={3}
+                              onChange={(e) => onTemplateChange(trigger.id, template.id, 'body', e.target.value)}
+                              placeholder="Body"
+                            />
+
+                            <button onClick={() => onTestSend(trigger.slug, template.id)}>
+                              Test
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
             </tbody>
           </table>
-        </section>
-      )}
-
-      <section>
-        <h2>User Actions</h2>
-        <p>Trigger login/logout events from the website.</p>
-        <div style={{ display: 'grid', gap: '12px', maxWidth: '420px' }}>
-          <button onClick={() => handleTriggerFire('login')}>Fire Login Trigger</button>
-          <button className="secondary" onClick={() => handleTriggerFire('logout')}>Fire Logout Trigger</button>
-          <button onClick={handleSubscribe}>Subscribe to Web Push</button>
-          {subscriberId && <p><small>Push subscriber ID: {subscriberId}</small></p>}
-          {isSubscribed && <p><small>Browser push subscription is active.</small></p>}
         </div>
       </section>
-    </div>
+    </>
   )
 }
 
